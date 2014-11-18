@@ -546,7 +546,7 @@ struct JsonParser {
                 i++;
         }
 
-        return std::atof(str.c_str() + start_pos);
+        return std::strtod(str.c_str() + start_pos, nullptr);
     }
 
     /* expect(str, res)
