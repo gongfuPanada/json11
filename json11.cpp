@@ -112,7 +112,7 @@ static void dump(const string &value, string &out) {
 static void dump(const Json::array &values, string &out) {
     bool first = true;
     out += "[";
-    for (auto &value : values) {
+    for (const auto &value : values) {
         if (!first)
             out += ", ";
         value.dump(out);
@@ -124,7 +124,7 @@ static void dump(const Json::array &values, string &out) {
 static void dump(const Json::object &values, string &out) {
     bool first = true;
     out += "{";
-    for (const std::pair<string, Json> &kv : values) {
+    for (const auto &kv : values) {
         if (!first)
             out += ", ";
         dump(kv.first, out);
@@ -158,10 +158,10 @@ protected:
 
     // Comparisons
     bool equals(const JsonValue * other) const override {
-        return m_value == reinterpret_cast<const Value<tag, T> *>(other)->m_value;
+        return m_value == static_cast<const Value<tag, T> *>(other)->m_value;
     }
     bool less(const JsonValue * other) const override {
-        return m_value < reinterpret_cast<const Value<tag, T> *>(other)->m_value;
+        return m_value < static_cast<const Value<tag, T> *>(other)->m_value;
     }
 
     const T m_value;
@@ -391,19 +391,19 @@ struct JsonParser {
             return;
 
         if (pt < 0x80) {
-            out += pt;
+            out += static_cast<char>(pt);
         } else if (pt < 0x800) {
-            out += (pt >> 6) | 0xC0;
-            out += (pt & 0x3F) | 0x80;
+            out += static_cast<char>((pt >> 6) | 0xC0);
+            out += static_cast<char>((pt & 0x3F) | 0x80);
         } else if (pt < 0x10000) {
-            out += (pt >> 12) | 0xE0;
-            out += ((pt >> 6) & 0x3F) | 0x80;
-            out += (pt & 0x3F) | 0x80;
+            out += static_cast<char>((pt >> 12) | 0xE0);
+            out += static_cast<char>(((pt >> 6) & 0x3F) | 0x80);
+            out += static_cast<char>((pt & 0x3F) | 0x80);
         } else {
-            out += (pt >> 18) | 0xF0;
-            out += ((pt >> 12) & 0x3F) | 0x80;
-            out += ((pt >> 6) & 0x3F) | 0x80;
-            out += (pt & 0x3F) | 0x80;
+            out += static_cast<char>((pt >> 18) | 0xF0);
+            out += static_cast<char>(((pt >> 12) & 0x3F) | 0x80);
+            out += static_cast<char>(((pt >> 6) & 0x3F) | 0x80);
+            out += static_cast<char>((pt & 0x3F) | 0x80);
         }
     }
 
@@ -445,6 +445,12 @@ struct JsonParser {
             if (ch == 'u') {
                 // Extract 4-byte escape sequence
                 string esc = str.substr(i, 4);
+                // Explicitly check length of the substring. The following loop
+                // relies on std::string returning the terminating NUL when
+                // accessing str[length]. Checking here reduces brittleness.
+                if (esc.length() < 4) {
+                    return fail("bad \\u escape: " + esc, "");
+                }
                 for (int j = 0; j < 4; j++) {
                     if (!in_range(esc[j], 'a', 'f') && !in_range(esc[j], 'A', 'F')
                             && !in_range(esc[j], '0', '9'))
@@ -557,12 +563,11 @@ struct JsonParser {
     Json expect(const string &expected, Json res) {
         assert(i != 0);
         i--;
-        const string found = str.substr(i, expected.length());
-        if (expected == found) {
+        if (str.compare(i, expected.length(), expected) == 0) {
             i += expected.length();
             return res;
         } else {
-            return fail("parse error: expected " + expected + ", got " + found);
+            return fail("parse error: expected " + expected + ", got " + str.substr(i, expected.length()));
         }
     }
 
