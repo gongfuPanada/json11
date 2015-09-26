@@ -41,24 +41,36 @@ using std::move;
  * Serialization
  */
 
+// an `snprintf` like function which dumps directly to a string
+template<typename... Args>
+static string format_string(const size_t max_size, char const * const format, Args... args) {
+    string result;
+    result.resize(max_size);
+    char * const data = const_cast<char *>(result.data());
+#if defined(_MSC_VER) && _MSC_VER < 2000
+    const int final_size = _snprintf_s(data, max_size, _TRUNCATE, format, std::forward<Args>(args)...);
+#else
+    const int final_size = snprintf(data, max_size, format, std::forward<Args>(args)...);
+#endif
+    // should probably check in debug versions that final_size > max_size
+    result.resize(final_size > 0 ? final_size : 0);
+    return result;
+}
+
 static void dump(std::nullptr_t, string &out) {
     out += "null";
 }
 
 static void dump(double value, string &out) {
     if (std::isfinite(value)) {
-        char buf[32];
-        snprintf(buf, sizeof buf, "%.17g", value);
-        out += buf;
+        out += format_string(32, "%.17g", value);
     } else {
         out += "null";
     }
 }
 
 static void dump(int value, string &out) {
-    char buf[32];
-    snprintf(buf, sizeof buf, "%d", value);
-    out += buf;
+    out += format_string(32, "%d", value);
 }
 
 static void dump(bool value, string &out) {
@@ -84,9 +96,7 @@ static void dump(const string &value, string &out) {
         } else if (ch == '\t') {
             out += "\\t";
         } else if (static_cast<uint8_t>(ch) <= 0x1f) {
-            char buf[8];
-            snprintf(buf, sizeof buf, "\\u%04x", ch);
-            out += buf;
+            out += format_string(8, "\\u%04x", ch);
         } else if (static_cast<uint8_t>(ch) == 0xe2 && static_cast<uint8_t>(value[i+1]) == 0x80
                    && static_cast<uint8_t>(value[i+2]) == 0xa8) {
             out += "\\u2028";
@@ -313,13 +323,11 @@ bool Json::operator< (const Json &other) const {
  * Format char c suitable for printing in an error message.
  */
 static inline string esc(char c) {
-    char buf[12];
     if (static_cast<uint8_t>(c) >= 0x20 && static_cast<uint8_t>(c) <= 0x7f) {
-        snprintf(buf, sizeof buf, "'%c' (%d)", c, c);
+        return format_string(12, "'%c' (%d)", c, c);
     } else {
-        snprintf(buf, sizeof buf, "(%d)", c);
+        return format_string(12, "(%d)", c);
     }
-    return string(buf);
 }
 
 static inline bool in_range(long x, long lower, long upper) {
